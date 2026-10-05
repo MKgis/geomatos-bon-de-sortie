@@ -610,9 +610,11 @@ function buildDocDefSortie(fiche, logoDataUri) {
   ];
   const labelW = 115, valueW = (CONTENT_W - 2 * 115) / 2;
 
-  const equipHead = ["N°", "Désignation", "Type", "Marque", "Modèle", "N° de série", "Qté", "État sortie", "Observations"].map(headCell);
+  const equipHead = ["N°", "Type", "Marque", "Modèle", "N° de série", "Qté", "État sortie", "Observations"].map(headCell);
   const equipRows = (fiche.materiels_sortie || []).map((m) => [
-    dataCell(m.num, true, 7.5), dataCell(m.designation, false, 7.5), dataCell(m.type, false, 7.5),
+    dataCell(m.num, true, 7.5),
+    // Pas de colonne Désignation (redondante avec type/marque/modèle) ; une ligne hors catalogue sans ces champs garde sa désignation.
+    dataCell(m.type || (!m.marque && !m.modele ? m.designation : ""), false, 7.5),
     dataCell(m.marque, false, 7.5), dataCell(m.modele, false, 7.5), dataCell(m.num_serie, false, 7.5),
     dataCell(m.quantite, true, 7.5), dataCell(m.etat_sortie, false, 7.5), dataCell(m.observations, false, 7.5),
   ]);
@@ -627,7 +629,7 @@ function buildDocDefSortie(fiche, logoDataUri) {
       ...sectionTitle("INFORMATIONS DE SORTIE"),
       infoGrid(infoRows, [labelW, "*", labelW, "*"]),
       {
-        table: { headerRows: 1, widths: [18, "*", 46, 44, 48, 62, 24, 40, "*"], body: [equipHead, ...equipRows] },
+        table: { headerRows: 1, widths: [18, 72, 62, 82, 80, 24, 52, "*"], body: [equipHead, ...equipRows] },
         layout: tightGridLayout(),
       },
       signatureTable(["Demandeur", "Resp. Technique"]),
