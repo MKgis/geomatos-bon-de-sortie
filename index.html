@@ -235,7 +235,8 @@ table.data tr:last-child td { border-bottom: none; }
   <!-- ================= ONGLET NOUVELLE SORTIE ================= -->
   <section id="tab-nouvelle" class="tab-panel active">
     <form id="form-sortie" class="card">
-      <h2>Nouvelle sortie de matériel</h2>
+      <h2 id="titre-form-sortie">Nouvelle sortie de matériel</h2>
+      <div class="offline-banner" id="banner-edition" hidden></div>
       <div class="grid-2">
         <label>Nom du demandeur
           <input type="text" name="demandeur" required />
@@ -285,6 +286,7 @@ table.data tr:last-child td { border-bottom: none; }
       </div>
 
       <div class="actions">
+        <button type="button" class="btn btn-secondary" id="btn-annuler-edition" hidden>Annuler la modification</button>
         <button type="submit" class="btn btn-primary" id="btn-submit-sortie">Générer le Bon de Sortie</button>
       </div>
       <p class="note" id="note-sortie"></p>
@@ -927,11 +929,77 @@ async function genererEtTelechargerPdf(fiche, type) {
   telechargerBlob(blob, `${fiche.numero}${suffixe}.pdf`);
 }
 
-// ---------- Soumission : nouvelle sortie ----------
+// ---------- Mode édition d'un bon existant ----------
+let ficheEnEdition = null; // fiche (camelCase) en cours de modification, ou null
+
+function activerTab(nom) {
+  document.querySelectorAll(".tab-btn").forEach((b) => b.classList.toggle("active", b.dataset.tab === nom));
+  document.querySelectorAll(".tab-panel").forEach((p) => p.classList.toggle("active", p.id === "tab-" + nom));
+}
+
+function ligneMaterielDepuisDonnees(m) {
+  const tr = ligneMaterielSortie();
+  const eq = m.equipementId ? catalogueComplet.find((e) => e.id === m.equipementId) : null;
+  if (eq) {
+    const sel = tr.querySelector(".f-categorie");
+    sel.value = eq.categorieGroupe || "TOUS";
+    tr.querySelector(".f-designation").setAttribute("list", "dl-cat-" + slug(sel.value));
+  }
+  tr.querySelector(".f-designation").value = m.designation || "";
+  onDesignationChange(tr);
+  tr.querySelector(".f-num-serie").value = m.numSerie || "";
+  tr.querySelector(".f-etat").value = m.etatSortie || "";
+  tr.querySelector(".f-quantite").value = m.quantite || "1";
+  tr.querySelector(".f-observations").value = m.observations || "";
+  majBadge(tr, resoudreEquipement(tr));
+  return tr;
+}
+
+function entrerModeEdition(fiche) {
+  ficheEnEdition = fiche;
+  const form = document.getElementById("form-sortie");
+  form.demandeur.value = fiche.demandeur || "";
+  form.destination.value = fiche.destination || "";
+  form.telephoneDemandeur.value = fiche.telephoneDemandeur || "";
+  form.numeroProjet.value = fiche.numeroProjet || "";
+  form.objetSortie.value = fiche.objetSortie || "";
+  form.dateSortie.value = fiche.dateSortie || "";
+  form.dateRetourPrevue.value = fiche.dateRetourPrevue || "";
+  form.dureeUtilisation.value = fiche.dureeUtilisation || "";
+  tbodySortie.innerHTML = "";
+  (fiche.materielsSortie || []).forEach((m) => tbodySortie.appendChild(ligneMaterielDepuisDonnees(m)));
+  if (!tbodySortie.children.length) tbodySortie.appendChild(ligneMaterielSortie());
+
+  document.getElementById("titre-form-sortie").textContent = "Modifier le bon de sortie " + fiche.numero;
+  const banner = document.getElementById("banner-edition");
+  banner.textContent = "Mode modification : le N° " + fiche.numero + " est conservé, le PDF sera régénéré avec les nouvelles informations.";
+  banner.hidden = false;
+  document.getElementById("btn-annuler-edition").hidden = false;
+  document.getElementById("btn-submit-sortie").textContent = "Enregistrer les modifications";
+  activerTab("nouvelle");
+  window.scrollTo({ top: 0, behavior: "smooth" });
+}
+
+function sortirModeEdition() {
+  ficheEnEdition = null;
+  const form = document.getElementById("form-sortie");
+  form.reset();
+  tbodySortie.innerHTML = "";
+  tbodySortie.appendChild(ligneMaterielSortie());
+  document.getElementById("titre-form-sortie").textContent = "Nouvelle sortie de matériel";
+  document.getElementById("banner-edition").hidden = true;
+  document.getElementById("btn-annuler-edition").hidden = true;
+  document.getElementById("btn-submit-sortie").textContent = "Générer le Bon de Sortie";
+}
+document.getElementById("btn-annuler-edition").addEventListener("click", sortirModeEdition);
+
+// ---------- Soumission : nouvelle sortie ou modification ----------
 document.getElementById("form-sortie").addEventListener("submit", async (e) => {
   e.preventDefault();
   const form = e.target;
   const submitBtn = document.getElementById("btn-submit-sortie");
+  const enEdition = !!ficheEnEdition;
+  const libelleBouton = enEdition ? "Enregistrer les modifications" : "Générer le Bon de Sortie";
 
   const materiels = [...tbodySortie.querySelectorAll("tr")].map((tr) => {
     const eq = resoudreEquipement(tr);
@@ -947,7 +1015,9 @@ document.getElementById("form-sortie").addEventListener("submit", async (e) => {
 
   if (materiels.length === 0) { showToast("Ajoutez au moins un appareil.", true); return; }
 
-  const dejaEnMission = materiels.filter((m) => m.equipementId && missionParEquipementId.has(m.equipementId));
+  // En modification, les appareils déjà présents sur ce même bon ne comptent pas comme "déjà en mission".
+  const idsDuBon = new Set(enEdition ? (ficheEnEdition.materielsSortie || []).map((m) => m.equipementId).filter(Boolean) : []);
+  const dejaEnMission = materiels.filter((m) => m.equipementId && !idsDuBon.has(m.equipementId) && missionParEquipementId.has(m.equipementId));
   if (dejaEnMission.length > 0) {
     const noms = dejaEnMission.map((m) => m.designation).join(", ");
     const ok = window.confirm(`Attention : ${noms} apparaissent déjà "en mission" sur un bon non clôturé. Continuer quand même ?`);
@@ -955,46 +1025,58 @@ document.getElementById("form-sortie").addEventListener("submit", async (e) => {
   }
 
   submitBtn.disabled = true;
-  submitBtn.textContent = "Génération…";
+  submitBtn.textContent = enEdition ? "Enregistrement…" : "Génération…";
   try {
-    const { data: numero, error: rpcErr } = await sb.rpc("generer_numero_fiche");
-    if (rpcErr) throw rpcErr;
-
-    const fiche = {
-      numero, statut: "En cours (sorti)",
+    const champs = {
       demandeur: form.demandeur.value, destination: form.destination.value,
       telephoneDemandeur: form.telephoneDemandeur.value, numeroProjet: form.numeroProjet.value,
       objetSortie: form.objetSortie.value,
       dateSortie: form.dateSortie.value, dureeUtilisation: form.dureeUtilisation.value,
       dateRetourPrevue: form.dateRetourPrevue.value,
-      materielsSortie: materiels, dateRetour: "", materielsRetour: [], materielManquant: "",
     };
-    const { error: insErr } = await sb.from("fiches").insert({
-      numero: fiche.numero,
-      statut: fiche.statut,
-      demandeur: fiche.demandeur,
-      destination: fiche.destination,
-      objet_sortie: fiche.objetSortie,
-      telephone_demandeur: fiche.telephoneDemandeur,
-      numero_projet: fiche.numeroProjet,
-      date_sortie: fiche.dateSortie,
-      date_retour_prevue: fiche.dateRetourPrevue || null,
-      duree_utilisation: fiche.dureeUtilisation,
+    const colonnes = {
+      demandeur: champs.demandeur,
+      destination: champs.destination,
+      objet_sortie: champs.objetSortie,
+      telephone_demandeur: champs.telephoneDemandeur,
+      numero_projet: champs.numeroProjet,
+      date_sortie: champs.dateSortie,
+      date_retour_prevue: champs.dateRetourPrevue || null,
+      duree_utilisation: champs.dureeUtilisation,
       materiels_sortie: materiels,
-      created_by: monProfil.id,
-    });
-    if (insErr) throw insErr;
+    };
 
-    showToast(`Bon de sortie ${numero} créé. Génération du document…`);
-    await genererEtTelechargerPdf(fiche, "sortie");
-    form.reset();
-    tbodySortie.innerHTML = "";
-    tbodySortie.appendChild(ligneMaterielSortie());
+    if (enEdition) {
+      const { error: updErr } = await sb.from("fiches").update(colonnes).eq("numero", ficheEnEdition.numero);
+      if (updErr) throw updErr;
+      const ficheMaj = { ...ficheEnEdition, ...champs, materielsSortie: materiels };
+      showToast(`Bon de sortie ${ficheMaj.numero} modifié. Génération du document…`);
+      await genererEtTelechargerPdf(ficheMaj, "sortie");
+      sortirModeEdition();
+      activerTab("registre");
+    } else {
+      const { data: numero, error: rpcErr } = await sb.rpc("generer_numero_fiche");
+      if (rpcErr) throw rpcErr;
+      const fiche = {
+        numero, statut: "En cours (sorti)", ...champs,
+        materielsSortie: materiels, dateRetour: "", materielsRetour: [], materielManquant: "",
+      };
+      const { error: insErr } = await sb.from("fiches").insert({
+        numero, statut: fiche.statut, ...colonnes, created_by: monProfil.id,
+      });
+      if (insErr) throw insErr;
+
+      showToast(`Bon de sortie ${numero} créé. Génération du document…`);
+      await genererEtTelechargerPdf(fiche, "sortie");
+      form.reset();
+      tbodySortie.innerHTML = "";
+      tbodySortie.appendChild(ligneMaterielSortie());
+    }
   } catch (err) {
     showToast("Erreur : " + (err && err.message ? err.message : err), true);
   } finally {
     submitBtn.disabled = false;
-    submitBtn.textContent = "Générer le Bon de Sortie";
+    submitBtn.textContent = libelleBouton;
   }
 });
 
@@ -1058,6 +1140,14 @@ function rendreRegistre() {
     }
 
     if (f.statut !== "Clôturée") {
+      const btnModifier = document.createElement("button");
+      btnModifier.className = "btn btn-secondary";
+      btnModifier.style.padding = "6px 12px";
+      btnModifier.style.fontSize = "12px";
+      btnModifier.textContent = "Modifier";
+      btnModifier.addEventListener("click", () => entrerModeEdition(f));
+      actionsCell.appendChild(btnModifier);
+
       const btnCloturer = document.createElement("button");
       btnCloturer.className = "btn btn-primary";
       btnCloturer.style.padding = "6px 12px";
