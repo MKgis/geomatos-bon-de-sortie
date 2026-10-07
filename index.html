@@ -228,6 +228,8 @@ table.data tr:last-child td { border-bottom: none; }
     <nav class="tabs" id="main-tabs">
       <button class="tab-btn active" data-tab="nouvelle" type="button">+ Nouvelle sortie</button>
       <button class="tab-btn" data-tab="registre" type="button">Registre</button>
+      <button class="tab-btn" data-tab="nouveau-pv" type="button">+ Nouveau PV</button>
+      <button class="tab-btn" data-tab="registre-pv" type="button">Registre PV</button>
       <button class="tab-btn" data-tab="admin" type="button" id="tab-btn-admin" hidden>Administration</button>
     </nav>
     <span class="user-pill">
@@ -322,6 +324,87 @@ table.data tr:last-child td { border-bottom: none; }
   </section>
 
   <!-- ================= ONGLET ADMINISTRATION ================= -->
+  <!-- ================= ONGLET NOUVEAU PV ================= -->
+  <section id="tab-nouveau-pv" class="tab-panel">
+    <form id="form-pv" class="card">
+      <h2 id="titre-form-pv">Nouveau PV de réalisation de travaux</h2>
+      <div class="offline-banner" id="banner-edition-pv" hidden></div>
+      <div class="grid-2">
+        <label>Client
+          <input type="text" name="client" required />
+        </label>
+        <label>N° bon de commande
+          <input type="text" name="numero_bc" placeholder="ex. BC-2026-0457" />
+        </label>
+        <label>Lieu d'exécution
+          <input type="text" name="lieu" />
+        </label>
+        <span></span>
+        <label>Date de début
+          <input type="date" name="date_debut" />
+        </label>
+        <label>Date de fin / réalisation
+          <input type="date" name="date_fin" required />
+        </label>
+      </div>
+      <label style="margin-top:10px">1. Objet du procès-verbal
+        <textarea name="objet" rows="3" placeholder="ex. Travaux de levé topographique réalisés pour le compte du client…"></textarea>
+      </label>
+      <h3>2. Détail des prestations réalisées</h3>
+      <div class="table-scroll">
+        <table class="data" id="prestations-pv">
+          <thead><tr><th style="width:36px">N°</th><th>Désignation de la prestation</th><th>Description / livrables</th><th>Observations</th><th style="width:40px"></th></tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+      <div class="row-toolbar">
+        <button type="button" id="btn-ajouter-prestation" class="btn btn-secondary">+ Ajouter une prestation</button>
+      </div>
+      <h3>3. Validation et réception</h3>
+      <div class="row-toolbar" style="gap:18px;flex-wrap:wrap">
+        <label style="flex-direction:row;display:flex;gap:6px;align-items:center"><input type="radio" name="reception" value="sans_reserve" checked /> Réception sans réserve</label>
+        <label style="flex-direction:row;display:flex;gap:6px;align-items:center"><input type="radio" name="reception" value="avec_reserves" /> Réception avec réserves</label>
+        <label style="flex-direction:row;display:flex;gap:6px;align-items:center"><input type="radio" name="reception" value="refusee" /> Réception refusée</label>
+      </div>
+      <h3>4. Signatures</h3>
+      <div class="grid-2">
+        <label>Nom du signataire — Prestataire (GEOMATOS)
+          <input type="text" name="signataire_prestataire" />
+        </label>
+        <label>Date de signature — Prestataire
+          <input type="date" name="date_signature_prestataire" />
+        </label>
+        <label>Nom du signataire — Client
+          <input type="text" name="signataire_client" />
+        </label>
+        <label>Date de signature — Client
+          <input type="date" name="date_signature_client" />
+        </label>
+      </div>
+      <div class="row-toolbar" style="margin-top:16px">
+        <button type="button" id="btn-annuler-pv" class="btn btn-secondary" hidden>Annuler la modification</button>
+        <button type="submit" id="btn-enregistrer-pv" class="btn btn-primary">Enregistrer et afficher le PV</button>
+      </div>
+    </form>
+  </section>
+
+  <!-- ================= ONGLET REGISTRE PV ================= -->
+  <section id="tab-registre-pv" class="tab-panel">
+    <div class="card">
+      <h2>Registre des PV de réalisation de travaux</h2>
+      <div class="registre-toolbar">
+        <input type="search" id="filtre-recherche-pv" placeholder="Rechercher (n° PV, client, lieu, n° BC)…" />
+      </div>
+      <div class="table-scroll">
+        <table class="data" id="registre-pv-table">
+          <thead><tr><th>N° PV</th><th>Client</th><th>Lieu</th><th>Date de fin</th><th>Réception</th><th>Actions</th></tr></thead>
+          <tbody id="registre-pv-body"></tbody>
+        </table>
+      </div>
+      <div class="empty-state" id="registre-pv-empty" hidden>Aucun PV enregistré.</div>
+    </div>
+  </section>
+
   <section id="tab-admin" class="tab-panel">
     <div class="card">
       <h2>Comptes utilisateurs</h2>
@@ -469,6 +552,7 @@ table.data tr:last-child td { border-bottom: none; }
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
 <script src="pdf.min.js"></script>
+<script src="pv_assets.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/pdfmake@0.3.11/build/pdfmake.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/pdfmake@0.3.11/build/vfs_fonts.js"></script>
 <script>
@@ -679,7 +763,122 @@ function buildDocDefRetour(fiche, logoDataUri) {
   };
 }
 
-return { buildDocDefSortie, buildDocDefRetour };
+function checkbox(label, checked) {
+  return {
+    columns: [
+      { width: 14, canvas: [
+        { type: "rect", x: 0, y: 1, w: 9, h: 9, lineWidth: 0.9, lineColor: BLUE },
+        ...(checked ? [{ type: "line", x1: 1.8, y1: 5.5, x2: 4, y2: 8.2, lineWidth: 1.4, lineColor: BLUE }, { type: "line", x1: 4, y1: 8.2, x2: 8, y2: 2.4, lineWidth: 1.4, lineColor: BLUE }] : []),
+      ] },
+      { width: "*", text: label, fontSize: 9 },
+    ],
+    columnGap: 2,
+  };
+}
+
+function textBox(text, minHeight) {
+  return {
+    table: { widths: ["*"], body: [[{ text: text || "", fontSize: 9, lineHeight: 1.25, margin: [2, 4, 2, minHeight || 4] }]] },
+    layout: gridLayout(),
+    margin: [0, 0, 0, 8],
+  };
+}
+
+function buildDocDefPV(pv, logoDataUri) {
+  const A = (typeof window !== "undefined" && window.PV_ASSETS) || null;
+  const labelW = 105, labelW2 = 125;
+  const infoRows = [
+    [labelCell("N° du PV"), valueCell(pv.numero_pv), labelCell("N° bon de commande"), valueCell(pv.numero_bc)],
+    [labelCell("Client"), valueCell(pv.client), labelCell("Lieu d'exécution"), valueCell(pv.lieu)],
+    [labelCell("Date de début"), valueCell(pv.date_debut), labelCell("Date de fin / réalisation"), valueCell(pv.date_fin)],
+  ];
+  const head = ["N°", "Désignation de la prestation", "Description / livrables", "Observations"].map(headCell);
+  const prest = (pv.prestations && pv.prestations.length) ? pv.prestations : [];
+  const rows = prest.map((p, i) => [
+    dataCell(i + 1, true, 8.5), dataCell(p.designation, false, 8.5), dataCell(p.description, false, 8.5), dataCell(p.observations, false, 8.5),
+  ]);
+  const titre = (t) => [
+    { text: t, color: BLUE, fontSize: 10.5, margin: [0, 8, 0, 2] },
+    { margin: [0, 0, 0, 5], ...hr(ORANGE) },
+  ];
+  const box = (text) => ({
+    table: { widths: ["*"], body: [[{ text: text || "", fontSize: 9, lineHeight: 1.25, margin: [2, 3, 2, 3] }]] },
+    layout: gridLayout(), margin: [0, 0, 0, 2],
+  });
+  const reception = pv.reception || "sans_reserve";
+  const sigTable = {
+    table: {
+      widths: [70, "*", 70, "*"],
+      body: [
+        [{ ...sigHeadCell("POUR LE PRESTATAIRE — GEOMATOS HOLDING GROUP"), colSpan: 2 }, {}, { ...sigHeadCell("POUR LE CLIENT"), colSpan: 2 }, {}],
+        [labelCell("Nom"), valueCell(pv.signataire_prestataire), labelCell("Nom"), valueCell(pv.signataire_client)],
+        [labelCell("Date"), valueCell(pv.date_signature_prestataire), labelCell("Date"), valueCell(pv.date_signature_client)],
+        [labelCell("Signature & cachet"), { text: "\n\n\n\n", fontSize: 9 }, labelCell("Signature & cachet"), { text: "\n\n\n\n", fontSize: 9 }],
+      ],
+    },
+    layout: gridLayout(),
+    unbreakable: true,
+  };
+  return {
+    pageSize: "A4",
+    pageMargins: [MARGIN, 112, MARGIN, 112],
+    defaultStyle: { font: "Roboto" },
+    background: function () { return A ? papierEntete(A) : []; },
+    content: [
+      { text: "Procès-Verbal de Réalisation de Travaux", color: BLUE, fontSize: 15, alignment: "center", margin: [0, 0, 0, 3] },
+      { margin: [0, 0, 0, 8], ...hr(ORANGE) },
+      infoGrid(infoRows, [labelW, "*", labelW2, "*"]),
+      ...titre("1. OBJET DU PROCÈS-VERBAL"),
+      box(pv.objet),
+      ...titre("2. DÉTAIL DES PRESTATIONS RÉALISÉES"),
+      { table: { headerRows: 1, widths: [20, "*", "*", 110], body: [head, ...rows] }, layout: tightGridLayout(), margin: [0, 0, 0, 2] },
+      ...titre("3. VALIDATION ET RÉCEPTION"),
+      { text: "Les parties déclarent que les travaux et prestations ci-dessus ont été réalisés et reçus conformément au cahier des charges, au devis et au bon de commande de référence.", fontSize: 9, lineHeight: 1.25, margin: [0, 0, 0, 6] },
+      { columns: [
+        checkbox("Réception sans réserve", reception === "sans_reserve"),
+        checkbox("Réception avec réserves", reception === "avec_reserves"),
+        checkbox("Réception refusée", reception === "refusee"),
+      ], columnGap: 10, margin: [0, 0, 0, 2] },
+      ...titre("4. SIGNATURES"),
+      sigTable,
+    ],
+  };
+}
+
+function texteBloc(text, x, y, w, opts, align) {
+  return { table: { widths: [w], body: [[{ text, alignment: align || "center", border: [false, false, false, false], ...opts }]] }, layout: { hLineWidth: () => 0, vLineWidth: () => 0, paddingLeft: () => 0, paddingRight: () => 0, paddingTop: () => 0, paddingBottom: () => 0 }, absolutePosition: { x, y } };
+}
+
+// Papier à en-tête GEOMATOS, reproduit d'après le modèle de PV validé (en-tête, filigrane, pied de page).
+function papierEntete(A) {
+  const PW = PAGE_W, PH = 841.89;
+  const P = 792.3; // repère vertical du pied de page (positions relevées dans le modèle Word)
+  const partners = [
+    { i: 0, x: 114.4, y: P - 37.7, w: 40.5 }, // Leica
+    { i: 1, x: 162.0, y: P - 32.4, w: 54.6 }, // Spectra
+    { i: 2, x: 221.0, y: P - 27.5, w: 65.25 }, // DJI
+    { i: 3, x: 291.8, y: P - 33.5, w: 54.0 }, // AgEagle
+    { i: 4, x: 351.5, y: P - 29.6, w: 60.5 }, // Seafloor
+    { i: 6, x: 414.0, y: P - 29.6, w: 46.5 }, // Radiodetection
+  ].map((p) => ({ image: A.partners[p.i], width: p.w, absolutePosition: { x: p.x, y: p.y } }));
+  const blanc = { color: "#FFFFFF", fontSize: 7.2, lineHeight: 1.25 };
+  return [
+    { image: A.topWave, width: 670.7, height: 105.7, absolutePosition: { x: -60, y: -8.8 } },
+    { image: A.watermark, width: 300, absolutePosition: { x: (PW - 300) / 2, y: 300 } },
+    { image: A.logo, width: 112, absolutePosition: { x: 29, y: 67 } },
+    { image: A.badge, width: 65, absolutePosition: { x: 468, y: 57 } },
+    texteBloc("Distributeur agréé en Afrique de l'Ouest des Solutions Géospatiales\nVente - Location et Maintenance de Matériels Topographiques\nGPS – Guidage d'engin – Station Totale – Logiciel – Scanner 3D – Drone\nNiveau Automatique – Audit – Conseil & Formation", (PW - 300) / 2, 50, 300, { color: BLUE, fontSize: 7.6, lineHeight: 1.3 }),
+    { image: A.bottomWave, width: 729.2, height: 99.2, absolutePosition: { x: -46.6, y: 744 } },
+    texteBloc("Transformer votre monde dans l'espace et dans le temps", (PW - 292.5) / 2, 742, 292.5, { color: BLUE, italics: true, fontSize: 8 }),
+    ...partners,
+    texteBloc("GEOMATOS HOLDING GROUP\nSiège Social : Abidjan – Riviera Bonoumin\nProgramme Lauriers 6 – Villa 10 – Ilot D19\n18 BP 1966 Abidjan 18", 13, 794, 170, blanc, "left"),
+    texteBloc("Tel : +225 27 22 45 06 32  •  Mob : +225 05 55 48 54 02\ncontact@geomatos.ci  •  www.geomatos.ci", 190, 806, 250, { ...blanc, fontSize: 7 }),
+    texteBloc("Société par Actions Simplifiées\nCapital social de 30.000.000 FCFA\nRCCM : CI-ABJ-03-2015-B-05371\nCC : 1509400 Q - RNI\nCNPS : 248709", 446.7, 782, 134, { ...blanc, bold: true }, "right"),
+  ];
+}
+
+
+return { buildDocDefSortie, buildDocDefRetour, buildDocDefPV };
 })();
 </script>
 <script>
@@ -958,6 +1157,22 @@ function buildDocDataSortie(fiche) {
   };
 }
 
+function dateFR(iso) {
+  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(iso || "");
+  return m ? `${m[3]}/${m[2]}/${m[1]}` : (iso || "");
+}
+
+function buildDocDataPV(pv) {
+  return {
+    numero_pv: pv.numero, numero_bc: pv.numero_bc || "", client: pv.client || "", lieu: pv.lieu || "",
+    date_debut: dateFR(pv.date_debut), date_fin: dateFR(pv.date_fin), objet: pv.objet || "",
+    prestations: Array.isArray(pv.prestations) ? pv.prestations : [],
+    reception: pv.reception || "sans_reserve",
+    signataire_prestataire: pv.signataire_prestataire || "", signataire_client: pv.signataire_client || "",
+    date_signature_prestataire: dateFR(pv.date_signature_prestataire), date_signature_client: dateFR(pv.date_signature_client),
+  };
+}
+
 function buildDocDataRetour(fiche) {
   const materielsRetourSource = (fiche.materielsRetour && fiche.materielsRetour.length)
     ? fiche.materielsRetour
@@ -1000,7 +1215,9 @@ function base64ToBlob(b64, mimeType) {
 }
 
 async function genererPdfBlob(fiche, type) {
-  const docDef = type === "retour"
+  const docDef = type === "pv"
+    ? window.GeomatosPDF.buildDocDefPV(buildDocDataPV(fiche), BS_LOGO_DATA_URI)
+    : type === "retour"
     ? window.GeomatosPDF.buildDocDefRetour(buildDocDataRetour(fiche), BS_LOGO_DATA_URI)
     : window.GeomatosPDF.buildDocDefSortie(buildDocDataSortie(fiche), BS_LOGO_DATA_URI);
   const b64 = await pdfMake.createPdf(docDef).getBase64();
@@ -1014,7 +1231,7 @@ let apercuCourant = null; // { fiche, type, blob }
 async function afficherApercu(fiche, type) {
   const zone = document.getElementById("apercu-pages");
   const numero = fiche.numero || fiche.id || "";
-  document.getElementById("apercu-titre").textContent = (type === "retour" ? "Fiche de retour " : "Bon de sortie ") + numero;
+  document.getElementById("apercu-titre").textContent = (type === "pv" ? "PV de réalisation de travaux " : type === "retour" ? "Fiche de retour " : "Bon de sortie ") + numero;
   zone.innerHTML = '<div class="apercu-msg">Génération de l\'aperçu…</div>';
   modalApercu.hidden = false;
   try {
@@ -1044,7 +1261,7 @@ document.getElementById("btn-apercu-telecharger").addEventListener("click", () =
 
 async function genererEtTelechargerPdf(fiche, type, blobExistant) {
   const blob = blobExistant || await genererPdfBlob(fiche, type);
-  const suffixe = type === "retour" ? "_retour" : "_sortie";
+  const suffixe = type === "pv" ? "_pv" : type === "retour" ? "_retour" : "_sortie";
   telechargerBlob(blob, `${fiche.numero}${suffixe}.pdf`);
 }
 
@@ -1530,10 +1747,173 @@ function demarrerAbonnementsTempsReel() {
   sb.channel("fiches-rt")
     .on("postgres_changes", { event: "*", schema: "public", table: "fiches" }, () => chargerFiches())
     .subscribe();
+  sb.channel("pv-rt")
+    .on("postgres_changes", { event: "*", schema: "public", table: "pv_travaux" }, () => chargerPV())
+    .subscribe();
   sb.channel("equipements-rt")
     .on("postgres_changes", { event: "*", schema: "public", table: "equipements" }, () => chargerCatalogue())
     .subscribe();
 }
+
+// ---------- PV de réalisation de travaux ----------
+let pvActuels = [];
+let pvEnEdition = null;
+const formPV = document.getElementById("form-pv");
+const tbodyPrestations = document.querySelector("#prestations-pv tbody");
+const RECEPTION_LIBELLES = { sans_reserve: "Sans réserve", avec_reserves: "Avec réserves", refusee: "Refusée" };
+
+function echapperHtml(s) {
+  return String(s == null ? "" : s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+}
+
+function renumeroterPrestations() {
+  Array.from(tbodyPrestations.rows).forEach((tr, i) => { tr.querySelector(".p-num").textContent = i + 1; });
+}
+
+function lignePrestation(p) {
+  const tr = document.createElement("tr");
+  tr.innerHTML = `
+    <td class="p-num" style="text-align:center"></td>
+    <td><textarea class="p-designation" rows="2"></textarea></td>
+    <td><textarea class="p-description" rows="2"></textarea></td>
+    <td><textarea class="p-observations" rows="2"></textarea></td>
+    <td><button type="button" class="btn btn-secondary p-suppr" title="Supprimer la ligne" style="padding:4px 9px">×</button></td>`;
+  tr.querySelector(".p-designation").value = (p && p.designation) || "";
+  tr.querySelector(".p-description").value = (p && p.description) || "";
+  tr.querySelector(".p-observations").value = (p && p.observations) || "";
+  tr.querySelector(".p-suppr").addEventListener("click", () => {
+    if (tbodyPrestations.rows.length > 1) { tr.remove(); renumeroterPrestations(); }
+    else { tr.querySelectorAll("textarea").forEach((t) => { t.value = ""; }); }
+  });
+  tbodyPrestations.appendChild(tr);
+  renumeroterPrestations();
+  return tr;
+}
+document.getElementById("btn-ajouter-prestation").addEventListener("click", () => lignePrestation());
+
+function lirePrestations() {
+  return Array.from(tbodyPrestations.rows).map((tr) => ({
+    designation: tr.querySelector(".p-designation").value.trim(),
+    description: tr.querySelector(".p-description").value.trim(),
+    observations: tr.querySelector(".p-observations").value.trim(),
+  })).filter((p) => p.designation || p.description || p.observations);
+}
+
+function reinitialiserFormPV() {
+  formPV.reset();
+  tbodyPrestations.innerHTML = "";
+  lignePrestation();
+  if (monProfil) formPV.elements.signataire_prestataire.value = monProfil.nom || "";
+}
+
+function sortirModeEditionPV() {
+  pvEnEdition = null;
+  document.getElementById("titre-form-pv").textContent = "Nouveau PV de réalisation de travaux";
+  document.getElementById("banner-edition-pv").hidden = true;
+  document.getElementById("btn-annuler-pv").hidden = true;
+  document.getElementById("btn-enregistrer-pv").textContent = "Enregistrer et afficher le PV";
+  reinitialiserFormPV();
+}
+
+function entrerModeEditionPV(pv) {
+  pvEnEdition = pv;
+  reinitialiserFormPV();
+  const f = formPV.elements;
+  ["client", "numero_bc", "lieu", "date_debut", "date_fin", "objet", "signataire_prestataire", "signataire_client", "date_signature_prestataire", "date_signature_client"]
+    .forEach((k) => { f[k].value = pv[k] || ""; });
+  const r = formPV.querySelector(`input[name="reception"][value="${pv.reception}"]`);
+  if (r) r.checked = true;
+  tbodyPrestations.innerHTML = "";
+  const prest = Array.isArray(pv.prestations) && pv.prestations.length ? pv.prestations : [null];
+  prest.forEach((p) => lignePrestation(p));
+  document.getElementById("titre-form-pv").textContent = "Modifier le PV " + pv.numero;
+  const banner = document.getElementById("banner-edition-pv");
+  banner.textContent = "Modification du PV " + pv.numero + " — le numéro reste inchangé.";
+  banner.hidden = false;
+  document.getElementById("btn-annuler-pv").hidden = false;
+  document.getElementById("btn-enregistrer-pv").textContent = "Enregistrer les modifications";
+  activerTab("nouveau-pv");
+  window.scrollTo({ top: 0, behavior: "smooth" });
+}
+document.getElementById("btn-annuler-pv").addEventListener("click", () => { sortirModeEditionPV(); activerTab("registre-pv"); });
+
+formPV.addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const f = formPV.elements;
+  const btn = document.getElementById("btn-enregistrer-pv");
+  const champs = {
+    numero_bc: f.numero_bc.value.trim(), client: f.client.value.trim(), lieu: f.lieu.value.trim(),
+    date_debut: f.date_debut.value || null, date_fin: f.date_fin.value, objet: f.objet.value.trim(),
+    prestations: lirePrestations(),
+    reception: formPV.querySelector('input[name="reception"]:checked').value,
+    signataire_prestataire: f.signataire_prestataire.value.trim(), signataire_client: f.signataire_client.value.trim(),
+    date_signature_prestataire: f.date_signature_prestataire.value || null,
+    date_signature_client: f.date_signature_client.value || null,
+  };
+  btn.disabled = true;
+  try {
+    let pvSauve;
+    if (pvEnEdition) {
+      const { data, error } = await sb.from("pv_travaux").update({ ...champs, updated_at: new Date().toISOString() })
+        .eq("numero", pvEnEdition.numero).select().single();
+      if (error) throw error;
+      pvSauve = data;
+      showToast("PV " + pvSauve.numero + " modifié.");
+    } else {
+      const { data: numero, error: e1 } = await sb.rpc("generer_numero_pv");
+      if (e1) throw e1;
+      const { data, error } = await sb.from("pv_travaux").insert({ numero, ...champs, created_by: monProfil.id }).select().single();
+      if (error) throw error;
+      pvSauve = data;
+      showToast("PV " + pvSauve.numero + " enregistré.");
+    }
+    sortirModeEditionPV();
+    await chargerPV();
+    afficherApercu(pvSauve, "pv");
+  } catch (err) {
+    showToast("Erreur : " + (err && err.message ? err.message : err), true);
+  } finally {
+    btn.disabled = false;
+  }
+});
+
+async function chargerPV() {
+  const { data, error } = await sb.from("pv_travaux").select("*").order("created_at", { ascending: false });
+  if (error) { showToast("Erreur chargement PV : " + error.message, true); return; }
+  pvActuels = data || [];
+  rendreRegistrePV();
+}
+
+function rendreRegistrePV() {
+  const recherche = normaliser(document.getElementById("filtre-recherche-pv").value);
+  const body = document.getElementById("registre-pv-body");
+  const empty = document.getElementById("registre-pv-empty");
+  body.innerHTML = "";
+  const filtres = pvActuels.filter((p) => !recherche ||
+    [p.numero, p.client, p.lieu, p.numero_bc].some((v) => normaliser(v).includes(recherche)));
+  empty.hidden = filtres.length > 0;
+  filtres.forEach((p) => {
+    const tr = document.createElement("tr");
+    tr.innerHTML = `
+      <td><strong>${echapperHtml(p.numero)}</strong></td>
+      <td>${echapperHtml(p.client)}</td>
+      <td>${echapperHtml(p.lieu)}</td>
+      <td>${echapperHtml(dateFR(p.date_fin))}</td>
+      <td>${echapperHtml(RECEPTION_LIBELLES[p.reception] || "")}</td>
+      <td class="row-toolbar" style="margin:0"></td>`;
+    const cell = tr.querySelector("td:last-child");
+    [["Voir le PV", () => afficherApercu(p, "pv")],
+     ["PDF", () => genererEtTelechargerPdf(p, "pv")],
+     ["Modifier", () => entrerModeEditionPV(p)]].forEach(([label, fn]) => {
+      const b = document.createElement("button");
+      b.className = "btn btn-secondary"; b.style.padding = "6px 12px"; b.style.fontSize = "12px";
+      b.textContent = label; b.addEventListener("click", fn);
+      cell.appendChild(b);
+    });
+    body.appendChild(tr);
+  });
+}
+document.getElementById("filtre-recherche-pv").addEventListener("input", rendreRegistrePV);
 
 // ---------- Authentification ----------
 const loginScreen = document.getElementById("login-screen");
@@ -1595,6 +1975,8 @@ async function apresConnexion() {
 
   await chargerCatalogue();
   await chargerFiches();
+  reinitialiserFormPV();
+  await chargerPV();
   demarrerAbonnementsTempsReel();
 }
 
